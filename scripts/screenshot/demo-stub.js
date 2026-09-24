@@ -37,3 +37,16 @@ window.addEventListener("DOMContentLoaded", () => {
   tab.innerHTML = "Whisper Subs In <span>≡</span>";
   document.body.prepend(tab);
 });
+// Match Chromium (what Premiere uses): single down chevron on menus, blue checkboxes with a white tick
+window.addEventListener("DOMContentLoaded", () => {
+  const chevron = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="#ddd" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  const tick = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 14 14"><path d="M3 7.2 5.8 10 11 4.2" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  const css = document.createElement("style");
+  css.textContent = `
+    select { -webkit-appearance: none; appearance: none; padding-right: 26px;
+             background: var(--field) url("${chevron}") no-repeat right 8px center; }
+    input[type=checkbox] { -webkit-appearance: none; appearance: none; width: 13px; height: 13px; margin: 0 3px 0 0;
+                           border-radius: 3px; background: #fff; border: 1px solid #8a8a8a; }
+    input[type=checkbox]:checked { background: #2d8ceb url("${tick}") no-repeat center / 12px; border-color: #2d8ceb; }`;
+  document.head.appendChild(css);
+});
