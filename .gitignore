@@ -1,0 +1,8 @@
+.DS_Store
+.debug
+*.bin
+*.mlmodelc/
+*.wav
+*.srt
+panel/bin/
+dist/

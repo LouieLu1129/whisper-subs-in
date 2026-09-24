@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Colors follow Premiere's panel brightness (set in applyTheme) */
+  :root { --bg: #232323; --fg: #b4b4b4; --strong: #eee; --muted: #808080; --field: #1a1a1a; --line: #3a3a3a; --btn: #3a3a3a;
+          --btnHover: #474747; --warn: #d9a441; --warnBg: #3a2f16; --warnLine: #6b5422; --warnText: #e8d3a0; --link: #6aa9f0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 10px; background: var(--bg); color: var(--fg);
+         font: 12px -apple-system, "Helvetica Neue", "PingFang TC", sans-serif; }
+  a { color: var(--link); cursor: pointer; text-decoration: none; }
+  .row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .row.top { align-items: flex-start; }
+  .lbl { flex: 0 0 76px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  .row.top .lbl { padding-top: 4px; }
+  .mini { font-size: 10px; }
+  select { flex: 1; min-width: 0; background: var(--field); color: var(--fg); border: 1px solid var(--line);
+           border-radius: 3px; padding: 4px; font: inherit; }
+  button { background: var(--btn); color: var(--fg); border: 0; border-radius: 3px; padding: 4px 8px;
+           font: inherit; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { background: var(--btnHover); }
+  button:disabled { opacity: .4; cursor: default; }
+  .ib { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; flex: 0 0 24px; }
+  .ic { width: 16px; height: 16px; fill: currentColor; }
+  .ic.sm { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
+  .ic.inl { width: 12px; height: 12px; vertical-align: -2px; margin: 0 2px; }
+  button.primary { width: 100%; background: #2d8ceb; color: #fff; font-size: 13px; padding: 8px; margin-top: 2px; }
+  button.primary:hover:not(:disabled) { background: #3b97f0; }
+  button.primary.cancel { background: var(--btn); color: var(--fg); }
+  button.primary.cancel:hover { background: var(--btnHover); }
+  .check { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .muted { color: var(--muted); }
+  .nowrap { white-space: nowrap; }
+  .src { margin: -4px 0 8px 82px; font-size: 11px; }
+  .src { display: flex; align-items: center; gap: 6px; }
+  .src a { color: var(--fg); opacity: .85; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .src .x { flex: 0 0 auto; white-space: nowrap; }
+  /* × after an added folder (tooltip: Remove from list) */
+  .x { background: none; padding: 1px 3px; color: var(--muted); display: flex; align-items: center; }
+  .x:hover:not(:disabled) { background: var(--btn); color: var(--fg); }
+  .ic.xs { width: 11px; height: 11px; }
+  .hint { margin: -4px 0 8px 82px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .hint.warn { color: var(--warn); }
+  .banner { display: flex; gap: 8px; background: var(--warnBg); color: var(--warnText); border: 1px solid var(--warnLine);
+            border-radius: 3px; padding: 8px; margin-bottom: 10px; font-size: 11px; line-height: 1.5; }
+  .banner .ic { fill: var(--warn); flex: 0 0 16px; }
+  #tracks { flex: 1; background: var(--field); border: 1px solid var(--line); border-radius: 3px;
+            padding: 4px 6px; max-height: 110px; overflow-y: auto; }
+  #tracks .check { padding: 2px 0; }
+  #tracks .check.off { cursor: default; opacity: .45; }
+  #tracks .check.dim span { opacity: .55; }
+  #tracks .tag { font-size: 10px; color: var(--warn); border: 1px solid var(--warnLine); border-radius: 2px; padding: 0 3px; }
+  #tracks .empty { color: var(--muted); }
+  #status { font-weight: 600; color: var(--strong); margin-top: 8px; display: flex; justify-content: space-between; gap: 8px; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #2d8ceb; }
+  #after { margin-top: 4px; font-size: 11px; }
+  /* Tooltip: Premiere panels don't show the browser's own title tooltips */
+  #tip { position: fixed; z-index: 10; display: none; max-width: 240px; padding: 4px 7px; border-radius: 3px; pointer-events: none;
+         background: var(--strong); color: var(--bg); font-size: 11px; line-height: 1.4; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: var(--muted); }
+  #log { white-space: pre-wrap; font: 11px Menlo, monospace; color: var(--muted); max-height: 140px; overflow-y: auto; margin-top: 4px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="i-folder" viewBox="0 0 20 20"><path d="m16.75,5h-5.96387c-.21777,0-.42383-.09473-.56689-.25879l-1.70361-1.96484c-.42773-.49316-1.04736-.77637-1.7002-.77637h-3.56543c-1.24072,0-2.25,1.00977-2.25,2.25v10.5c0,1.24023,1.00928,2.25,2.25,2.25h13.5c1.24072,0,2.25-1.00977,2.25-2.25v-7.5c0-1.24023-1.00928-2.25-2.25-2.25ZM3.25,3.5h3.56543c.21777,0,.42383.09473.56689.25879l1.07617,1.24121H2.5v-.75c0-.41309.33643-.75.75-.75Zm14.25,11.25c0,.41309-.33643.75-.75.75H3.25c-.41357,0-.75-.33691-.75-.75V6.5h14.25c.41357,0,.75.33691.75.75v7.5Z"/></symbol><symbol id="i-refresh" viewBox="0 0 20 20"><path d="M18.20654,3.89746c-.40527-.09473-.80811.15039-.90527.55371l-.38043,1.57471c-1.39771-2.43188-4.00189-4.00439-6.92084-4.00439-3.68457,0-6.87549,2.5-7.75928,6.08008-.09961.40234.146.80859.54834.9082.40137.09961.80859-.14648.90771-.54883.71826-2.9082,3.31006-4.93945,6.30322-4.93945,2.51685,0,4.73499,1.44629,5.80896,3.63232l-2.10242-.5083c-.40332-.09375-.80762.15039-.90527.55371-.09717.40234.15039.80762.55273.90527l3.24524.78418c.12476.08862.27362.14258.43152.14258.05957,0,.12012-.00684.18018-.02148.04822-.01196.08582-.04102.12921-.06104.06952-.01855.14331-.01953.20575-.05811.16943-.10352.29102-.27051.33789-.46387l.87549-3.62402c.09717-.40234-.15039-.80762-.55273-.90527Z"/><path d="M17.21094,11.03223c-.39697-.09668-.80811.14648-.90771.54883-.71826,2.90918-3.31006,4.94043-6.30322,4.94043-2.51703,0-4.73523-1.44653-5.80914-3.63354l2.1026.50854c.40283.0918.80811-.15039.90527-.55371.09717-.40234-.15039-.80762-.55273-.90527l-3.25494-.78662c-.17102-.11816-.38531-.17139-.60199-.11865-.0152.00391-.026.01465-.04071.01929-.10321.01318-.20392.04419-.29425.09985-.16943.10352-.29102.27051-.33789.46387l-.87549,3.62402c-.09717.40234.15039.80762.55273.90527.05957.01367.11865.02051.17676.02051.33838,0,.64551-.23047.72852-.57422l.38043-1.57471c1.39764,2.43213,4.00189,4.00537,6.92084,4.00537,3.68457,0,6.87549-2.50098,7.75928-6.08105.09961-.40234-.146-.80859-.54834-.9082Z"/></symbol><symbol id="i-folderAdd" viewBox="0 0 20 20"><path d="m8.37305,15.49811H3.25c-.41357,0-.75-.33643-.75-.75V6.49811h14.25c.41357,0,.75.33643.75.75v1.82227c0,.41406.33594.75.75.75s.75-.33594.75-.75v-1.82227c0-1.24072-1.00928-2.25-2.25-2.25h-5.96387c-.21729,0-.42432-.09424-.56641-.2583l-1.70508-1.9668c-.42773-.49219-1.04736-.7749-1.69922-.7749h-3.56543c-1.24072,0-2.25,1.00928-2.25,2.25v10.5c0,1.24072,1.00928,2.25,2.25,2.25h5.12305c.41406,0,.75-.33594.75-.75s-.33594-.75-.75-.75ZM3.25,3.49811h3.56543c.21729,0,.42432.09424.56641.2583l1.07648,1.2417H2.5v-.75c0-.41357.33643-.75.75-.75Z"/><path d="m15,10.49805c-2.48529,0-4.5,2.01465-4.5,4.5s2.01471,4.5,4.5,4.5,4.5-2.01465,4.5-4.5-2.01471-4.5-4.5-4.5Zm2.5,5.125h-1.875v1.875c0,.34521-.27979.625-.625.625s-.625-.27979-.625-.625v-1.875h-1.875c-.34521,0-.625-.27979-.625-.625s.27979-.625.625-.625h1.875v-1.875c0-.34521.27979-.625.625-.625s.625.27979.625.625v1.875h1.875c.34521,0,.625.27979.625.625s-.27979.625-.625.625Z"/></symbol><symbol id="i-download" viewBox="0 0 20 20"><path d="m13.53027,9.42676c-.29199-.29199-.7666-.29395-1.06055,0l-1.7168,1.71411V2.75c0-.41406-.33594-.75-.75-.75s-.75.33594-.75.75v8.39941l-1.72266-1.72266c-.29297-.29297-.76758-.29297-1.06055,0s-.29297.76758,0,1.06055l2.99805,2.99805c.14648.14648.33789.21973.53027.21973.19141,0,.38379-.07324.53027-.21973l3.00195-2.99805c.29297-.29199.29297-.76758,0-1.06055Z"/><path d="m15.75,18H4.25c-1.24023,0-2.25-1.00977-2.25-2.25v-2.02148c0-.41406.33594-.75.75-.75s.75.33594.75.75v2.02148c0,.41309.33691.75.75.75h11.5c.41309,0,.75-.33691.75-.75v-2.02148c0-.41406.33594-.75.75-.75s.75.33594.75.75v2.02148c0,1.24023-1.00977,2.25-2.25,2.25Z"/></symbol><symbol id="i-close" viewBox="0 0 20 20"><path d="m11.06061,10l5.20648-5.20605c.29297-.29297.29297-.76758,0-1.06055s-.76758-.29297-1.06055,0l-5.20654,5.20605L4.79346,3.7334c-.29297-.29297-.76758-.29297-1.06055,0s-.29297.76758,0,1.06055l5.20648,5.20605-5.20648,5.20605c-.29297.29297-.29297.76758,0,1.06055.14648.14648.33838.21973.53027.21973s.38379-.07324.53027-.21973l5.20654-5.20605,5.20654,5.20605c.14648.14648.33838.21973.53027.21973s.38379-.07324.53027-.21973c.29297-.29297.29297-.76758,0-1.06055l-5.20648-5.20605Z"/></symbol><symbol id="i-alert" viewBox="0 0 20 20"><path d="m9.99936,15.12334c-.23065.00812-.45538-.07378-.62661-.22835-.33033-.36462-.33033-.91993,0-1.28455.16935-.15832.39483-.24279.62664-.23476.23635-.00947.46589.08026.63302.24745.16207.1677.24916.39386.24137.62681.01238.23469-.06959.4646-.2277.63864-.17358.16455-.40786.24959-.64671.23475Z"/><path d="m10,11.75c-.41406,0-.75-.33594-.75-.75v-4c0-.41406.33594-.75.75-.75s.75.33594.75.75v4c0,.41406-.33594.75-.75.75Z"/><path d="m16.7334,18H3.2666c-.80029,0-1.52295-.41016-1.93262-1.09766s-.42725-1.51855-.04639-2.22266L8.021,2.23242c.39355-.72754,1.15186-1.17969,1.979-1.17969s1.58545.45215,1.979,1.17969l6.7334,12.44727c.38086.7041.36328,1.53516-.04639,2.22266s-1.13232,1.09766-1.93262,1.09766ZM10,2.55273c-.13428,0-.46777.03809-.65967.39258L2.60693,15.39258c-.18311.33887-.05029.63184.01562.74121.06543.11035.25928.36621.64404.36621h13.4668c.38477,0,.57861-.25586.64404-.36621.06592-.10938.19873-.40234.01562-.74121L10.65967,2.94531c-.19189-.35449-.52539-.39258-.65967-.39258Z"/></symbol></svg>
+
+<div class="banner" id="engineBanner" style="display:none">
+  <svg class="ic"><use href="#i-alert"/></svg>
+  <div><b>The transcription engine is missing.</b><br>Please reinstall Whisper Subs In.</div>
+</div>
+
+<div class="row">
+  <span class="lbl">Model</span>
+  <select id="model"></select>
+  <button class="ib" id="rescan" title="Rescan model folders"><svg class="ic"><use href="#i-refresh"/></svg></button>
+  <button class="ib" id="addDir" title="Add a folder that holds models"><svg class="ic"><use href="#i-folderAdd"/></svg></button>
+  <button class="ib" id="getModelsBtn" title="Get models (opens Hugging Face in your browser)"><svg class="ic"><use href="#i-download"/></svg></button>
+</div>
+<div class="src" id="modelSrc"><a id="openSrc" title="Show in Finder"><svg class="ic sm"><use href="#i-folder"/></svg><span></span></a>
+  <button class="x" id="removeModel" title="Remove from list"><svg class="ic xs"><use href="#i-close"/></svg></button></div>
+<div class="hint warn" id="modelHint" style="display:none">No models yet. Put a .bin model file in the models folder, then press
+  <svg class="ic inl"><use href="#i-refresh"/></svg>.<br><a id="openDir">Open models folder</a> · <a id="getModels">Where to get models</a></div>
+
+<div class="row">
+  <span class="lbl">Language</span>
+  <select id="lang">
+    <option value="auto">Auto detect</option>
+    <option value="zh">Chinese</option>
+    <option value="en">English</option>
+    <option value="ja">Japanese</option>
+    <option value="ko">Korean</option>
+    <option value="es">Spanish</option>
+    <option value="fr">French</option>
+    <option value="de">German</option>
+    <option value="th">Thai</option>
+    <option value="vi">Vietnamese</option>
+    <option value="id">Indonesian</option>
+  </select>
+</div>
+<div class="row" id="scriptRow">
+  <span class="lbl">Characters</span>
+  <select id="script">
+    <option value="native">As transcribed</option>
+    <option value="trad">Traditional Mandarin</option>
+    <option value="simp">Simplified Mandarin</option>
+  </select>
+</div>
+
+<div class="row">
+  <span class="lbl">Range</span>
+  <select id="range">
+    <option value="all">Entire sequence</option>
+    <option value="inout">Sequence In/Out</option>
+  </select>
+  <span id="rangeInfo" class="muted nowrap"></span>
+</div>
+
+<div class="row top">
+  <span class="lbl">Audio tracks<span class="mini"><a id="selAll">All</a> / <a id="selNone">None</a></span></span>
+  <div id="tracks"><span class="empty">Not detected yet</span></div>
+</div>
+<div class="hint warn" id="muteHint" style="display:none">Muted tracks can't be selected. To transcribe one, unmute it in Premiere, then come back to this panel.</div>
+
+<button id="go" class="primary">Create captions</button>
+
+<div id="status"><span id="statusText">Ready</span><span id="elapsed" class="muted"></span></div>
+<div class="bar" id="bar" style="display:none"><i></i></div>
+<div id="after" style="display:none"><a id="reveal">Reveal SRT in Finder</a></div>
+
+<div id="tip"></div>
+
+<details>
+  <summary>Log</summary>
+  <div id="log"></div>
+</details>
+
+<script>
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { spawn } = require("child_process");
+
+const HOME = os.homedir();
+const AFCONVERT = "/usr/bin/afconvert";
+// The transcription engine ships with the panel (bin/whisper-cli, built by scripts/build-engine.sh).
+// A Homebrew whisper-cli is used only as a fallback, e.g. when running from source without building.
+function findWhisper() {
+  for (const p of [path.join(extensionDir(), "bin", "whisper-cli"), "/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli"]) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+const WHISPER = findWhisper();
+// Default models folder. Users drop .bin files here; ＋ adds other folders
+const MODEL_DIR = path.join(HOME, "Documents", "Whisper Subs In", "Models");
+try { fs.mkdirSync(MODEL_DIR, { recursive: true }); } catch (e) {}
+
+// ---------- Chinese characters (shown only when Language is Chinese) ----------
+// Keep what whisper wrote, or convert to Traditional / Simplified after transcription
+// with the bundled opencc-js (OpenCC dictionaries in JavaScript, nothing to install).
+const OPENCC_LOCALES = { trad: { from: "cn", to: "tw" }, simp: { from: "tw", to: "cn" } };
+let openccLib = null;
+function convertCharacters(file, script) {
+  if (!openccLib) {
+    const lib = require(path.join(extensionDir(), "lib", "opencc-js.js"));
+    openccLib = lib && lib.Converter ? lib : window.OpenCC;   // CommonJS export, or the UMD global
+  }
+  const convert = openccLib.Converter(OPENCC_LOCALES[script]);
+  fs.writeFileSync(file, convert(fs.readFileSync(file, "utf8")));
+}
+
+const $ = (id) => document.getElementById(id);
+const log = (s) => { $("log").textContent += s + "\n"; $("log").scrollTop = 1e9; };
+const setStatus = (s, pct) => { $("statusText").textContent = s; if (pct != null) $("bar").firstElementChild.style.width = pct + "%"; };
+
+// ---------- Theme: follow Premiere's panel brightness ----------
+function applyTheme() {
+  let c;
+  try { c = JSON.parse(window.__adobe_cep__.getHostEnvironment()).appSkinInfo.panelBackgroundColor.color; } catch (e) { return; }
+  const mix = (k) => "rgb(" + [c.red, c.green, c.blue].map((v) => Math.round(Math.max(0, Math.min(255, v + k)))).join(",") + ")";
+  const light = (0.299 * c.red + 0.587 * c.green + 0.114 * c.blue) / 255 > 0.5;
+  const v = light
+    ? { bg: mix(0), fg: "#1e1e1e", strong: "#000", muted: "#4f4f4f", field: mix(20), line: mix(-40), btn: mix(-18), btnHover: mix(-30),
+        warn: "#8a5a00", warnBg: "#e9d9ae", warnLine: "#b8963d", warnText: "#4a3500", link: "#0b5fb3" }
+    : { bg: mix(0), fg: "#b4b4b4", strong: "#eee", muted: "#808080", field: mix(-9), line: mix(23), btn: mix(23), btnHover: mix(36),
+        warn: "#d9a441", warnBg: "#3a2f16", warnLine: "#6b5422", warnText: "#e8d3a0", link: "#6aa9f0" };
+  for (const k in v) document.documentElement.style.setProperty("--" + k, v[k]);
+}
+
+// ---------- Settings ----------
+// Only the added model folders and the chosen model are saved. Everything else resets when the panel is closed and reopened,
+// but stays as-is while the panel is open (switching to other panels does not reset anything).
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("whispersubsin." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("whispersubsin." + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+// ---------- Models ----------
+function findModels(dir, depth, out) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (depth > 0 && !e.name.endsWith(".mlmodelc") && !e.name.startsWith(".")) findModels(p, depth - 1, out);
+    } else if (/\.bin$/i.test(e.name)) {
+      out.push(p);
+    }
+  }
+}
+
+function sizeLabel(p) {
+  try { return (fs.statSync(p).size / 1e9).toFixed(1) + " GB"; } catch (e) { return "missing"; }
+}
+
+// Clear options saved by earlier versions; only modelDirs and model are kept
+const KEEP = ["whispersubsin.modelDirs", "whispersubsin.model"];
+try { Object.keys(localStorage).filter((k) => k.startsWith("whispersubsin.") && !KEEP.includes(k)).forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+
+// The last used model is remembered. Folders are rescanned on every open; if that model is gone,
+// the first model in the list is used instead.
+let currentModel = store.get("model", "");
+function modelDirs() { return [MODEL_DIR, ...store.get("modelDirs", [])]; }
+
+const MODEL_SOURCES_URL = "https://huggingface.co/ggerganov/whisper.cpp/tree/main";
+
+// Group label "parent › folder", e.g. "Whisper Subs In › Models"
+function modelSource(p) {
+  const dir = [MODEL_DIR, ...store.get("modelDirs", [])].find((d) => p.startsWith(d + "/")) || path.dirname(p);
+  return path.basename(path.dirname(dir)) + " › " + path.basename(dir);
+}
+
+function loadModels() {
+  const found = [];
+  modelDirs().forEach((d) => findModels(d, 3, found));
+  // Smallest model first (file size on disk); same size falls back to the name
+  const size = (p) => { try { return fs.statSync(p).size; } catch (e) { return Infinity; } };
+  const all = [...new Set(found)].sort((a, b) => size(a) - size(b) || path.basename(a).localeCompare(path.basename(b)));
+  const sel = $("model");
+  sel.innerHTML = "";
+  const groups = {};
+  for (const p of all) {
+    const g = modelSource(p);
+    if (!groups[g]) { groups[g] = document.createElement("optgroup"); groups[g].label = g; sel.appendChild(groups[g]); }
+    const o = document.createElement("option");
+    o.value = p;
+    o.textContent = path.basename(p, ".bin").replace(/^ggml-/, "") + " (" + sizeLabel(p) + ")";
+    o.title = p;
+    groups[g].appendChild(o);
+  }
+  if (all.includes(currentModel)) sel.value = currentModel;
+  currentModel = sel.value;
+  store.set("model", currentModel);
+  if (!all.length) {
+    const o = document.createElement("option");
+    o.textContent = "No models yet";
+    o.value = "";
+    sel.appendChild(o);
+  }
+  sel.disabled = !all.length;
+  $("modelHint").style.display = all.length ? "none" : "";
+  updateModelSource();
+  updateReady();
+}
+
+// Folder of the selected model, shown under the menu; click to open it in Finder
+function modelFolder(p) {
+  return [MODEL_DIR, ...store.get("modelDirs", [])].find((d) => p.startsWith(d + "/")) || path.dirname(p);
+}
+function updateModelSource() {
+  const p = $("model").value;
+  $("modelSrc").style.display = p ? "" : "none";
+  if (p) $("openSrc").lastElementChild.textContent = modelSource(p);
+  // × only for folders you added; the default folder can't be removed
+  $("removeModel").style.display = p && modelFolder(p) !== MODEL_DIR ? "" : "none";
+  $("removeModel").disabled = busy;
+}
+$("openSrc").onclick = () => $("model").value && spawn("/usr/bin/open", [modelFolder($("model").value)]);
+$("openDir").onclick = () => spawn("/usr/bin/open", [MODEL_DIR]);
+$("getModels").onclick = $("getModelsBtn").onclick = () => window.cep.util.openURLInDefaultBrowser(MODEL_SOURCES_URL);
+
+$("rescan").onclick = loadModels;
+
+$("addDir").onclick = () => {
+  const r = window.cep.fs.showOpenDialogEx(false, true, "Choose a folder that holds models", HOME, []);
+  if (!r || r.err || !r.data || !r.data.length) return;
+  const dir = r.data[0].replace(/\/$/, "");
+  const dirs = store.get("modelDirs", []);
+  if (dir !== MODEL_DIR && !dirs.includes(dir)) dirs.push(dir);
+  store.set("modelDirs", dirs);
+  const found = [];
+  findModels(dir, 3, found);
+  log("Added folder: " + dir + " (" + found.length + " models found)");
+  if (found.length) currentModel = found[0];
+  loadModels();
+};
+
+$("removeModel").onclick = () => {
+  const p = $("model").value;
+  if (!p) return;
+  const dirs = store.get("modelDirs", []);
+  const dir = dirs.find((d) => p.startsWith(d + "/"));
+  if (!dir) return;
+  store.set("modelDirs", dirs.filter((d) => d !== dir));
+  log("Removed folder from list: " + dir + " (files are kept)");
+  loadModels();
+};
+
+// ---------- ExtendScript ----------
+function extensionDir() {
+  return decodeURI(window.__adobe_cep__.getSystemPath("extension")).replace(/^file:\/\//, "");
+}
+
+// host.jsx returns "OK|..." or "ERR|CODE|detail"
+const HOST_ERRORS = {
+  NO_PROJECT: "No project is open",
+  NO_SEQUENCE: "No active sequence",
+  PRESET_MISSING: "Export preset not found",
+  EXPORT_FAILED: "Audio export failed",
+  SRT_NOT_IN_BIN: "The SRT was imported but not found in the bin",
+};
+
+function evalJsx(fn, ...args) {
+  const call = fn + "(" + args.map((a) => JSON.stringify(a)).join(",") + ")";
+  return new Promise((resolve, reject) => {
+    window.__adobe_cep__.evalScript(call, (res) => {
+      if (typeof res !== "string") return reject(new Error("ExtendScript did not respond"));
+      const i = res.indexOf("|");
+      const tag = i < 0 ? res : res.slice(0, i), body = i < 0 ? "" : res.slice(i + 1);
+      if (tag === "OK") return resolve(body);
+      const m = body.match(/^([A-Z_]+)(?:\|([\s\S]*))?$/);
+      if (m && HOST_ERRORS[m[1]]) return reject(new Error(HOST_ERRORS[m[1]] + (m[2] ? ": " + m[2] : "")));
+      reject(new Error(body || res));
+    });
+  });
+}
+
+// ---------- Sequence / tracks ----------
+let seqInfo = null;
+
+function fmtTime(s) {
+  s = Math.max(0, s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = Math.floor(s % 60);
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(sec).padStart(2, "0");
+}
+
+const trackChoice = {};   // per-sequence track selection, this session only
+let lastInOut = null;     // In/Out seen last time, to notice when it changes
+
+async function refreshSequence() {
+  const box = $("tracks");
+  try {
+    seqInfo = JSON.parse(await evalJsx("ws_info"));
+  } catch (e) {
+    seqInfo = null;
+    box.innerHTML = '<span class="empty"></span>';
+    box.firstChild.textContent = e.message;
+    $("rangeInfo").textContent = "";
+    $("muteHint").style.display = "none";
+    return;
+  }
+  const checked = trackChoice[seqInfo.name] || null;
+  box.innerHTML = "";
+  for (const tr of seqInfo.tracks) {
+    const l = document.createElement("label");
+    l.className = "check" + (tr.muted ? " off" : tr.clips ? "" : " dim");
+    const on = !tr.muted && (checked ? checked.includes(tr.index) : tr.clips > 0);
+    const name = tr.name && tr.name !== "Audio " + (tr.index + 1) ? " " + tr.name : "";
+    const clips = tr.clips === 1 ? "1 clip" : tr.clips ? tr.clips + " clips" : "empty";
+    l.innerHTML = '<input type="checkbox" data-i="' + tr.index + '"' + (on ? " checked" : "") + (tr.muted ? " disabled" : "") + ">" +
+      '<span></span><span class="muted">' + clips + "</span>" + (tr.muted ? '<span class="tag">Muted</span>' : "");
+    l.children[1].textContent = "A" + (tr.index + 1) + name;
+    if (tr.muted) l.title = "Muted: unmute it in Premiere first";
+    box.appendChild(l);
+  }
+  if (!seqInfo.tracks.length) box.innerHTML = '<span class="empty">This sequence has no audio tracks</span>';
+  box.querySelectorAll("input").forEach((i) => i.onchange = saveTracks);
+  $("muteHint").style.display = seqInfo.tracks.some((tr) => tr.muted) ? "" : "none";
+  // When In/Out is set or cleared, switch Range to match. A manual choice stays until In/Out changes again.
+  const hasInOut = seqInfo.inSec > 0.01 || (seqInfo.outSec > 0 && seqInfo.outSec < seqInfo.endSec - 0.05);
+  const inOutKey = seqInfo.name + "|" + (hasInOut ? seqInfo.inSec + "-" + seqInfo.outSec : "none");
+  if (inOutKey !== lastInOut) { $("range").value = hasInOut ? "inout" : "all"; lastInOut = inOutKey; }
+  updateRangeInfo();
+}
+
+function selectedTracks() {
+  return [...$("tracks").querySelectorAll("input:checked:not(:disabled)")].map((i) => +i.dataset.i);
+}
+function saveTracks() { if (seqInfo) trackChoice[seqInfo.name] = selectedTracks(); }
+
+function updateRangeInfo() {
+  if (!seqInfo) return;
+  $("rangeInfo").textContent = $("range").value === "inout"
+    ? "In " + fmtTime(seqInfo.inSec) + " → Out " + fmtTime(seqInfo.outSec)
+    : "Duration " + fmtTime(seqInfo.endSec);
+}
+
+$("selAll").onclick = () => { $("tracks").querySelectorAll("input:not(:disabled)").forEach((i) => i.checked = true); saveTracks(); };
+$("selNone").onclick = () => { $("tracks").querySelectorAll("input").forEach((i) => i.checked = false); saveTracks(); };
+
+// ---------- Child processes ----------
+let current = null, cancelled = false;
+
+function run(cmd, args, onStderr) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(cmd, args);
+    current = p;
+    let err = "";
+    p.stderr.on("data", (d) => { const s = d.toString(); err += s; if (err.length > 20000) err = err.slice(-10000); onStderr && onStderr(s); });
+    p.on("error", reject);
+    p.on("close", (code) => {
+      current = null;
+      if (cancelled) reject(new Error("Cancelled"));
+      else if (code === 0) resolve();
+      else { const e = new Error(path.basename(cmd) + " exited with code " + code + "\n" + err.slice(-800)); e.code = code; e.stderr = err; reject(e); }
+    });
+  });
+}
+
+function safeName(s) { return s.replace(/[\/\\:*?"<>|]/g, "_").trim() || "sequence"; }
+function stamp() {
+  const d = new Date(), z = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "_" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+}
+function rm(f) { try { fs.unlinkSync(f); } catch (e) {} }
+
+// ---------- Main flow ----------
+let lastSrt = null, timer = null, busy = false;
+
+// While running, the main button becomes Cancel and the progress bar is shown
+function setBusy(b) {
+  busy = b;
+  ["rescan", "addDir", "model"].forEach((id) => $(id).disabled = b);
+  $("go").textContent = b ? "Cancel" : "Create captions";
+  $("go").classList.toggle("cancel", b);
+  $("bar").style.display = b ? "" : "none";
+  if (b) $("after").style.display = "none";
+  clearInterval(timer);
+  if (b) {
+    const t0 = Date.now();
+    $("elapsed").textContent = "0:00";
+    timer = setInterval(() => $("elapsed").textContent = fmtTime((Date.now() - t0) / 1000), 500);
+  }
+  if (!b) $("model").disabled = !$("model").value;
+  updateModelSource();
+  updateReady();
+}
+
+// Create captions needs the engine and a model (Cancel is always available while running)
+function updateReady() { $("go").disabled = !busy && (!WHISPER || !$("model").value); }
+
+const langName = (code) => { const o = [...$("lang").options].find((x) => x.value === code); return o ? o.textContent : code; };
+
+async function generate() {
+  cancelled = false;
+  setBusy(true);
+  $("log").textContent = "";
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "whispersubsin-"));
+  const wav48 = path.join(tmp, "audio48k.wav");
+  const wav16 = path.join(tmp, "audio16k.wav");
+  try {
+    if (!WHISPER) throw new Error("The transcription engine is missing. Please reinstall Whisper Subs In.");
+    const model = $("model").value;
+    if (!model) throw new Error("No model yet. Put a .bin model file in the models folder first.");
+    if (!fs.existsSync(model)) throw new Error("Model file not found (is the drive connected?)\n" + model);
+
+    await refreshSequence();
+    if (!seqInfo) throw new Error("No active sequence");
+    const tracks = selectedTracks();
+    if (seqInfo.tracks.length && !tracks.length) throw new Error("Select at least one audio track");
+    const useInOut = $("range").value === "inout";
+    if (useInOut && !(seqInfo.outSec > seqInfo.inSec)) throw new Error("Set valid In/Out points on the sequence first");
+    const startSec = useInOut ? seqInfo.inSec : 0;
+    // Muted tracks are never exported; if every unmuted track is selected, leave mute states alone
+    const allTracks = tracks.length === seqInfo.tracks.filter((tr) => !tr.muted).length;
+
+    const lang = $("lang").value;
+    log("Engine: " + WHISPER);
+    log("Model: " + model);
+    log("Language: " + lang + " | Tracks: " + tracks.map((i) => "A" + (i + 1)).join(", ") +
+      " | Range: " + (useInOut ? fmtTime(seqInfo.inSec) + "–" + fmtTime(seqInfo.outSec) : "entire sequence"));
+
+    // Keep the SRT next to the project (the bin item points to it); unsaved projects use ~/Movies/Whisper Subs In
+    const srtDir = seqInfo.projDir || path.join(HOME, "Movies", "Whisper Subs In");
+    fs.mkdirSync(srtDir, { recursive: true });
+    const srtBase = path.join(srtDir, safeName(seqInfo.name) + "_" + stamp());
+
+    setStatus("Exporting audio…", 3);
+    log("Premiere may freeze while exporting audio. This is normal.");
+    await new Promise((r) => setTimeout(r, 50)); // let the UI repaint first
+    await evalJsx("ws_exportAudio", wav48, path.join(extensionDir(), "presets", "whisper-subs-in-wav.epr"),
+      useInOut, allTracks ? "" : tracks.join(","));
+    if (cancelled) throw new Error("Cancelled");
+    await run(AFCONVERT, ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", wav48, wav16]);
+    rm(wav48);
+
+    setStatus("Transcribing…", 8);
+    const args = ["-m", model, "-l", lang, "-osrt", "-pp", "-of", srtBase, "-f", wav16];
+    let detected = null;
+    try {
+      await run(WHISPER, args, (s) => {
+        const lm = s.match(/auto-detected language:\s*(\w+)\s*\(p\s*=\s*([\d.]+)\)/);
+        if (lm) { detected = lm[1]; log("Detected language: " + lm[1] + " (" + Math.round(parseFloat(lm[2]) * 100) + "%)"); }
+        const m = s.match(/progress\s*=\s*(\d+)%/g);
+        if (m) {
+          const pct = parseInt(m[m.length - 1].match(/\d+/)[0], 10);
+          setStatus("Transcribing… " + pct + "%", 8 + pct * 0.85);
+        }
+      });
+    } catch (e) {
+      // whisper-cli exit code 3 = the model failed to load
+      if (!cancelled && (e.code === 3 || /failed to initialize whisper context/.test(e.stderr || ""))) {
+        throw new Error("Failed to load model: " + model +
+          "\nThe file may be incomplete or not a whisper.cpp GGML model.");
+      }
+      throw e;
+    }
+    const srt = srtBase + ".srt";
+    if (!fs.existsSync(srt)) throw new Error("whisper-cli did not produce an SRT");
+
+    // Character conversion applies only when Chinese is chosen; Auto detect keeps whisper's characters
+    const script = lang === "zh" ? $("script").value : "native";
+    if (script !== "native") {
+      convertCharacters(srt, script);
+      log("Characters converted to " + (script === "trad" ? "Traditional" : "Simplified"));
+    }
+    const count = (fs.readFileSync(srt, "utf8").match(/-->/g) || []).length;
+    log("SRT: " + srt + " (" + count + " captions)");
+    lastSrt = srt;
+
+    setStatus("Creating captions…", 97);
+    const name = await evalJsx("ws_importSrt", srt, startSec);
+    setStatus("Done: " + count + " captions" + (detected ? " · Detected " + langName(detected) : ""), 100);
+    log("Caption track created: " + name);
+    $("after").style.display = "";
+  } catch (e) {
+    setStatus(cancelled ? "Cancelled" : "Failed", 0);
+    log(String(e.message || e));
+    if (!cancelled) document.querySelector("details").open = true;
+  } finally {
+    rm(wav48); rm(wav16);
+    try { fs.rmdirSync(tmp); } catch (e) {}
+    setBusy(false);
+  }
+}
+
+$("go").onclick = () => {
+  if (!busy) return generate();
+  cancelled = true;
+  if (current) current.kill("SIGTERM");
+  setStatus("Cancelling…");
+};
+$("reveal").onclick = () => lastSrt && spawn("/usr/bin/open", ["-R", lastSrt]);
+
+// ---------- Startup ----------
+// Characters appears only when Language is Chinese
+function updateScriptUi() { $("scriptRow").style.display = $("lang").value === "zh" ? "" : "none"; }
+$("lang").addEventListener("change", updateScriptUi);
+updateScriptUi();
+
+$("model").addEventListener("change", () => { currentModel = $("model").value; store.set("model", currentModel); updateModelSource(); });
+$("range").addEventListener("change", updateRangeInfo);
+
+// Re-read the sequence when returning to the panel (new sequence, changed mutes); not while transcribing
+window.addEventListener("focus", () => { if (busy) return; refreshSequence(); });
+
+// Engine missing (should not happen with a normal install): show a banner
+if (!WHISPER) { $("engineBanner").style.display = ""; setStatus("Transcription engine missing"); }
+
+// Tooltips: show an element's title after a short hover (title is moved to data-tip so the two never overlap)
+(() => {
+  const tip = $("tip");
+  let timer = null, owner = null;
+  const hide = () => { clearTimeout(timer); tip.style.display = "none"; owner = null; };
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest("[title], [data-tip]");
+    if (el === owner) return;
+    hide();
+    if (!el) return;
+    if (el.title) { el.dataset.tip = el.title; el.removeAttribute("title"); }
+    owner = el;
+    timer = setTimeout(() => {
+      tip.textContent = el.dataset.tip;
+      tip.style.display = "block";
+      const r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+      const x = Math.min(Math.max(4, r.left + r.width / 2 - w / 2), window.innerWidth - w - 4);
+      const y = r.bottom + 6 + h > window.innerHeight ? r.top - h - 6 : r.bottom + 6;
+      tip.style.left = x + "px";
+      tip.style.top = y + "px";
+    }, 500);
+  });
+  document.addEventListener("mousedown", hide);
+  window.addEventListener("blur", hide);
+})();
+
+applyTheme();
+try { window.__adobe_cep__.addEventListener("com.adobe.csxs.events.ThemeColorChanged", applyTheme); } catch (e) {}
+loadModels();
+refreshSequence();
+</script>
+</body>
+</html>
