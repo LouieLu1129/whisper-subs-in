@@ -24,7 +24,7 @@ It aims to give you a reasonably accurate caption track to refine by hand, so it
 - Transcribe the entire sequence or just In to Out
 - Choose which audio tracks to use
 - Language auto-detect, or pick one
-- **Traditional or Simplified Chinese, your choice:** Whisper doesn't tell Traditional from Simplified, so the same video can come out in either, or a mix of both. Pick Traditional or Simplified and every caption uses the characters you want.
+- **Traditional or Simplified Chinese, your choice:** Whisper doesn't tell Traditional from Simplified. Which one you get depends mostly on the model and the speaker's accent, and a prompt can nudge it but not guarantee it. Pick Traditional or Simplified and every caption uses the characters you want.
 - Runs offline on Apple silicon, with the transcription engine built in
 
 ## Requirements
