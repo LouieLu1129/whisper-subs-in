@@ -212,8 +212,14 @@ function findModels(dir, depth, out) {
   }
 }
 
+// "1 caption" / "2 captions"
+const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+
+// File size in MB below 1 GB, otherwise GB (e.g. "75 MB", "1.5 GB")
 function sizeLabel(p) {
-  try { return (fs.statSync(p).size / 1e9).toFixed(1) + " GB"; } catch (e) { return "missing"; }
+  let bytes;
+  try { bytes = fs.statSync(p).size; } catch (e) { return "missing"; }
+  return bytes < 1e9 ? Math.round(bytes / 1e6) + " MB" : (bytes / 1e9).toFixed(1) + " GB";
 }
 
 // Clear options saved by earlier versions; only modelDirs and model are kept
@@ -293,7 +299,7 @@ $("addDir").onclick = () => {
   store.set("modelDirs", dirs);
   const found = [];
   findModels(dir, 3, found);
-  log("Added folder: " + dir + " (" + found.length + " models found)");
+  log("Added folder: " + dir + " (" + plural(found.length, "model") + " found)");
   if (found.length) currentModel = found[0];
   loadModels();
 };
@@ -351,45 +357,75 @@ const trackChoice = {};   // per-sequence track selection, this session only
 let lastInOut = null;     // In/Out seen last time, to notice when it changes
 
 async function refreshSequence() {
-  const box = $("tracks");
   try {
     seqInfo = JSON.parse(await evalJsx("ws_info"));
   } catch (e) {
     seqInfo = null;
+    const box = $("tracks");
     box.innerHTML = '<span class="empty"></span>';
     box.firstChild.textContent = e.message;
     $("rangeInfo").textContent = "";
     $("muteHint").style.display = "none";
     return;
   }
-  const checked = trackChoice[seqInfo.name] || null;
+  // When In/Out is set or cleared, switch Range to match. A manual choice stays until In/Out changes again.
+  const hasInOut = seqInfo.inSec > 0.01 || (seqInfo.outSec > 0 && seqInfo.outSec < seqInfo.endSec - 0.05);
+  const inOutKey = seqKey() + "|" + (hasInOut ? seqInfo.inSec + "-" + seqInfo.outSec : "none");
+  if (inOutKey !== lastInOut) { $("range").value = hasInOut ? "inout" : "all"; lastInOut = inOutKey; }
+  renderTracks();
+}
+
+// Sequences are told apart by Premiere's sequence ID (names can repeat)
+const seqKey = () => seqInfo.id || seqInfo.name;
+
+// Clips a track has in the current range. With In/Out, only clips overlapping In–Out count.
+function clipsInRange(tr) {
+  if ($("range").value !== "inout" || !tr.ranges || !tr.ranges.length) return tr.clips;
+  return tr.ranges.filter(([s, e]) => e > seqInfo.inSec && s < seqInfo.outSec).length;
+}
+
+// A track can be selected only if it isn't muted and has clips in the current range
+function renderTracks() {
+  if (!seqInfo) return;
+  const box = $("tracks");
+  const saved = trackChoice[seqKey()] || null;
   box.innerHTML = "";
   for (const tr of seqInfo.tracks) {
+    const n = clipsInRange(tr);
+    const usable = !tr.muted && n > 0;
     const l = document.createElement("label");
-    l.className = "check" + (tr.muted ? " off" : tr.clips ? "" : " dim");
-    const on = !tr.muted && (checked ? checked.includes(tr.index) : tr.clips > 0);
+    l.className = "check" + (usable ? "" : " off");
+    const on = usable && (saved ? saved.includes(tr.index) : true);
     const name = tr.name && tr.name !== "Audio " + (tr.index + 1) ? " " + tr.name : "";
-    const clips = tr.clips === 1 ? "1 clip" : tr.clips ? tr.clips + " clips" : "empty";
-    l.innerHTML = '<input type="checkbox" data-i="' + tr.index + '"' + (on ? " checked" : "") + (tr.muted ? " disabled" : "") + ">" +
-      '<span></span><span class="muted">' + clips + "</span>" + (tr.muted ? '<span class="tag">Muted</span>' : "");
+    const info = !tr.clips ? "empty" : n ? plural(n, "clip") : "no clips in range";
+    l.innerHTML = '<input type="checkbox" data-i="' + tr.index + '"' + (on ? " checked" : "") + (usable ? "" : " disabled") + ">" +
+      '<span></span><span class="muted">' + info + "</span>" + (tr.muted ? '<span class="tag">Muted</span>' : "");
     l.children[1].textContent = "A" + (tr.index + 1) + name;
     if (tr.muted) l.title = "Muted: unmute it in Premiere first";
+    else if (!tr.clips) l.title = "No clips on this track";
+    else if (!n) l.title = "No clips between In and Out";
     box.appendChild(l);
   }
   if (!seqInfo.tracks.length) box.innerHTML = '<span class="empty">This sequence has no audio tracks</span>';
-  box.querySelectorAll("input").forEach((i) => i.onchange = saveTracks);
+  box.querySelectorAll("input").forEach((i) => i.onchange = () => { saveTracks(); resetStatus(); });
   $("muteHint").style.display = seqInfo.tracks.some((tr) => tr.muted) ? "" : "none";
-  // When In/Out is set or cleared, switch Range to match. A manual choice stays until In/Out changes again.
-  const hasInOut = seqInfo.inSec > 0.01 || (seqInfo.outSec > 0 && seqInfo.outSec < seqInfo.endSec - 0.05);
-  const inOutKey = seqInfo.name + "|" + (hasInOut ? seqInfo.inSec + "-" + seqInfo.outSec : "none");
-  if (inOutKey !== lastInOut) { $("range").value = hasInOut ? "inout" : "all"; lastInOut = inOutKey; }
   updateRangeInfo();
+}
+
+// Why nothing can be transcribed, for the error message
+function noTrackReason() {
+  const t = seqInfo.tracks;
+  if (!t.length) return "This sequence has no audio tracks";
+  if (t.every((tr) => tr.muted)) return "All audio tracks are muted. Unmute one in Premiere first";
+  if (t.every((tr) => tr.muted || !clipsInRange(tr)))
+    return $("range").value === "inout" ? "No audio clips between In and Out" : "This sequence has no audio clips";
+  return "Select at least one audio track";
 }
 
 function selectedTracks() {
   return [...$("tracks").querySelectorAll("input:checked:not(:disabled)")].map((i) => +i.dataset.i);
 }
-function saveTracks() { if (seqInfo) trackChoice[seqInfo.name] = selectedTracks(); }
+function saveTracks() { if (seqInfo) trackChoice[seqKey()] = selectedTracks(); }
 
 function updateRangeInfo() {
   if (!seqInfo) return;
@@ -398,8 +434,8 @@ function updateRangeInfo() {
     : "Duration " + fmtTime(seqInfo.endSec);
 }
 
-$("selAll").onclick = () => { $("tracks").querySelectorAll("input:not(:disabled)").forEach((i) => i.checked = true); saveTracks(); };
-$("selNone").onclick = () => { $("tracks").querySelectorAll("input").forEach((i) => i.checked = false); saveTracks(); };
+$("selAll").onclick = () => { $("tracks").querySelectorAll("input:not(:disabled)").forEach((i) => i.checked = true); saveTracks(); resetStatus(); };
+$("selNone").onclick = () => { $("tracks").querySelectorAll("input").forEach((i) => i.checked = false); saveTracks(); resetStatus(); };
 
 // ---------- Child processes ----------
 let current = null, cancelled = false;
@@ -449,6 +485,14 @@ function setBusy(b) {
   updateReady();
 }
 
+// Changing a setting clears the last result, so an old "Done … Detected X" isn't mistaken for the new settings
+function resetStatus() {
+  if (busy) return;
+  setStatus(WHISPER ? "Ready" : "Transcription engine missing", 0);
+  $("elapsed").textContent = "";
+  $("after").style.display = "none";
+}
+
 // Create captions needs the engine and a model (Cancel is always available while running)
 function updateReady() { $("go").disabled = !busy && (!WHISPER || !$("model").value); }
 
@@ -470,7 +514,7 @@ async function generate() {
     await refreshSequence();
     if (!seqInfo) throw new Error("No active sequence");
     const tracks = selectedTracks();
-    if (seqInfo.tracks.length && !tracks.length) throw new Error("Select at least one audio track");
+    if (!tracks.length) throw new Error(noTrackReason());
     const useInOut = $("range").value === "inout";
     if (useInOut && !(seqInfo.outSec > seqInfo.inSec)) throw new Error("Set valid In/Out points on the sequence first");
     const startSec = useInOut ? seqInfo.inSec : 0;
@@ -483,8 +527,14 @@ async function generate() {
     log("Language: " + lang + " | Tracks: " + tracks.map((i) => "A" + (i + 1)).join(", ") +
       " | Range: " + (useInOut ? fmtTime(seqInfo.inSec) + "–" + fmtTime(seqInfo.outSec) : "entire sequence"));
 
-    // Keep the SRT next to the project (the bin item points to it); unsaved projects use ~/Movies/Whisper Subs In
-    const srtDir = seqInfo.projDir || path.join(HOME, "Movies", "Whisper Subs In");
+    // Keep the SRT next to the project (the bin item points to it). Unsaved projects, or a project folder
+    // we can't write to, use ~/Movies/Whisper Subs In instead.
+    const fallbackDir = path.join(HOME, "Movies", "Whisper Subs In");
+    let srtDir = seqInfo.projDir || fallbackDir;
+    try { fs.accessSync(srtDir, fs.constants.W_OK); } catch (e) {
+      if (srtDir !== fallbackDir) log("Can't write to the project folder, so the SRT goes to " + fallbackDir);
+      srtDir = fallbackDir;
+    }
     fs.mkdirSync(srtDir, { recursive: true });
     const srtBase = path.join(srtDir, safeName(seqInfo.name) + "_" + stamp());
 
@@ -528,12 +578,18 @@ async function generate() {
       log("Characters converted to " + (script === "trad" ? "Traditional" : "Simplified"));
     }
     const count = (fs.readFileSync(srt, "utf8").match(/-->/g) || []).length;
-    log("SRT: " + srt + " (" + count + " captions)");
+    if (!count) {
+      rm(srt);
+      setStatus("No speech found", 100);
+      log("Whisper found no speech in this range, so no caption track was created.");
+      return;
+    }
+    log("SRT: " + srt + " (" + plural(count, "caption") + ")");
     lastSrt = srt;
 
     setStatus("Creating captions…", 97);
     const name = await evalJsx("ws_importSrt", srt, startSec);
-    setStatus("Done: " + count + " captions" + (detected ? " · Detected " + langName(detected) : ""), 100);
+    setStatus("Done: " + plural(count, "caption") + (detected ? " · Detected " + langName(detected) : ""), 100);
     log("Caption track created: " + name);
     $("after").style.display = "";
   } catch (e) {
@@ -558,11 +614,12 @@ $("reveal").onclick = () => lastSrt && spawn("/usr/bin/open", ["-R", lastSrt]);
 // ---------- Startup ----------
 // Characters appears only when Language is Chinese
 function updateScriptUi() { $("scriptRow").style.display = $("lang").value === "zh" ? "" : "none"; }
-$("lang").addEventListener("change", updateScriptUi);
+$("lang").addEventListener("change", () => { updateScriptUi(); resetStatus(); });
+$("script").addEventListener("change", resetStatus);
 updateScriptUi();
 
-$("model").addEventListener("change", () => { currentModel = $("model").value; store.set("model", currentModel); updateModelSource(); });
-$("range").addEventListener("change", updateRangeInfo);
+$("model").addEventListener("change", () => { currentModel = $("model").value; store.set("model", currentModel); updateModelSource(); resetStatus(); });
+$("range").addEventListener("change", () => { renderTracks(); resetStatus(); });
 
 // Re-read the sequence when returning to the panel (new sequence, changed mutes); not while transcribing
 window.addEventListener("focus", () => { if (busy) return; refreshSequence(); });

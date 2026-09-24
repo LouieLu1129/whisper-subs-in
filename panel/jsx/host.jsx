@@ -14,7 +14,19 @@ function ws_timeSec(t) {
     return parseFloat(t) || 0;
 }
 
-// Returns "OK|{json}": sequence name, project folder, In/Out, audio tracks
+// Start/end seconds of each clip on a track, as "[[s,e],[s,e]]". Empty list if it can't be read.
+function ws_clipRanges(track) {
+    var out = [];
+    try {
+        for (var j = 0; j < track.clips.numItems; j++) {
+            var c = track.clips[j];
+            out.push("[" + ws_timeSec(c.start) + "," + ws_timeSec(c.end) + "]");
+        }
+    } catch (e) {}
+    return "[" + out.join(",") + "]";
+}
+
+// Returns "OK|{json}": sequence id and name, project folder, In/Out, audio tracks (with clip ranges)
 function ws_info() {
     try {
         if (!app.project) return "ERR|NO_PROJECT";
@@ -31,9 +43,12 @@ function ws_info() {
             var t = seq.audioTracks[i];
             var muted = false;
             try { muted = t.isMuted(); } catch (e) {}
-            tracks.push('{"index":' + i + ',"name":"' + ws_esc(t.name) + '","clips":' + t.clips.numItems + ',"muted":' + (muted ? "true" : "false") + '}');
+            tracks.push('{"index":' + i + ',"name":"' + ws_esc(t.name) + '","clips":' + t.clips.numItems +
+                ',"ranges":' + ws_clipRanges(t) + ',"muted":' + (muted ? "true" : "false") + '}');
         }
-        return 'OK|{"name":"' + ws_esc(seq.name) + '","projDir":"' + ws_esc(projDir) + '","inSec":' + inSec +
+        var seqId = "";
+        try { seqId = String(seq.sequenceID || ""); } catch (e) {}
+        return 'OK|{"id":"' + ws_esc(seqId) + '","name":"' + ws_esc(seq.name) + '","projDir":"' + ws_esc(projDir) + '","inSec":' + inSec +
             ',"outSec":' + outSec + ',"endSec":' + endSec + ',"tracks":[' + tracks.join(",") + "]}";
     } catch (e) {
         return "ERR|" + e.toString();
