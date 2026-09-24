@@ -45,7 +45,7 @@ It aims to give you a reasonably accurate caption track to refine by hand, so it
 
 ## Is it safe?
 
-macOS blocks the installer because I don't have a paid Apple Developer account ($99 a year), so the installer isn't signed by Apple. That is common for free open-source tools; it doesn't mean the file is harmful.
+macOS blocks the installer because it isn't signed by Apple, which requires a paid Apple Developer membership. That is common for free open-source tools; it doesn't mean the file is harmful.
 
 The installer is a plain text script. You can open `Install Whisper Subs In.command` in TextEdit and read it before running it. It does three things:
 
